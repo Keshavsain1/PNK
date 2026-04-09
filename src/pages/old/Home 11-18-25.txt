@@ -1,0 +1,480 @@
+// src/pages/Home.tsx
+import React, { useMemo, useRef, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { ArrowRight, Star, Users, Building, Award } from "lucide-react";
+import * as LucideIcons from "lucide-react";
+import { motion, useReducedMotion, useScroll, useTransform, Variants } from "framer-motion";
+import { projects, Project } from "../data/projects";
+import { services } from "../data/services";
+import { teamMembers } from "../data/team";
+import ProjectCard from "../components/ProjectCard";
+import ProjectModal from "../components/ProjectModal";
+import SEOHead from "../components/SEOHead";
+import { pageSEO } from "../utils/seo";
+import TestimonialCarousel from "../components/TestimonialCarousel";
+import useReveal from "../hooks/useReveal";
+import type { LucideIcon } from "lucide-react";
+
+const ACCENT = "#E6B566";
+const DARK = "#0b1220";
+
+/* ------------------------
+   Variants (typed) to avoid TS/linter red underline
+   ------------------------ */
+const containerVariants: Variants = {
+  hidden: { opacity: 0, y: 12 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      staggerChildren: 0.12,
+      when: "beforeChildren",
+    },
+  },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 12, scale: 0.995 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.48, ease: "easeInOut" } },
+};
+
+/**
+ * NOTE:
+ * Uses public assets at /assets/1.svg ... /assets/5.svg
+ * These are referenced directly with <img src="/assets/1.svg" />
+ */
+const SVG_PATHS = ["/assets/1.svg", "/assets/2.svg", "/assets/3.svg", "/assets/4.svg", "/assets/5.svg"];
+
+const Home: React.FC = () => {
+  const [selected, setSelected] = useState<Project | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const featured = useMemo(() => (projects || []).filter((p) => p.featured).slice(0, 6), []);
+  const decor = useMemo(() => (projects || []).slice(0, 6).map((p) => p.image || "/default-project.jpg"), []);
+
+  const reduceMotion = useReducedMotion();
+  const [heroIdx] = useState(0);
+
+  const heroReveal = useReveal<HTMLDivElement>({ delay: 60, once: true, stableMs: 220 });
+
+  const openProject = useCallback((project: Project) => {
+    setSelected(project);
+    setModalOpen(true);
+  }, []);
+
+  const onProjectKeyDown = useCallback(
+    (e: React.KeyboardEvent, project: Project) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openProject(project);
+      }
+    },
+    [openProject]
+  );
+
+  const StatCard: React.FC<{ icon: LucideIcon; value: string; label: string }> = ({ icon: Icon, value, label }) => {
+    const { ref, visible } = useReveal<HTMLDivElement>({ delay: 40, once: true, stableMs: 180 });
+    return (
+      <motion.div
+        ref={ref}
+        initial="hidden"
+        animate={visible ? "show" : "hidden"}
+        variants={itemVariants}
+        className="stat-card p-6 rounded-2xl flex flex-col items-center justify-center"
+      >
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/90 shadow-sm mb-3 text-[#0b1220]">
+          <Icon size={18} />
+        </div>
+        <div className="text-2xl font-semibold text-[#0b1220]">{value}</div>
+        <div className="text-sm text-gray-500 mt-1">{label}</div>
+      </motion.div>
+    );
+  };
+
+  // ServiceRow: alternating left/right, with inline SVG (img) decoration placed opposite the image side
+  const ServiceRow: React.FC<{ s: any; index: number }> = ({ s, index }) => {
+    const reverse = index % 2 === 1;
+    const containerRef = useRef<HTMLDivElement | null>(null);
+
+    // using the containerRef target for a localized scroll progress
+    const { scrollYProgress } = useScroll({ target: containerRef, offset: ["start end", "end start"] });
+    // small vertical parallax for image / inner content
+    const y = useTransform(scrollYProgress, [0, 1], [0, -18]);
+    // decorative svg parallax (smaller amplitude)
+    const svgParallax = useTransform(scrollYProgress, [0, 1], [8, -8]);
+
+    const imageColClass = index === 0 ? "md:col-span-6" : "md:col-span-5";
+    const contentColClass = index === 0 ? "md:col-span-6" : "md:col-span-7";
+    const imageOrderClass = reverse ? "md:order-2" : "md:order-1";
+    const contentOrderClass = reverse ? "md:order-1" : "md:order-2";
+
+    // map icon name string (from services data) to lucide-react component, if present
+    const IconComp = s?.icon ? (LucideIcons as any)[s.icon] ?? null : null;
+    const svgPath = SVG_PATHS[index % SVG_PATHS.length];
+
+    // NEW: place svg just outside the card edge (not page edge)
+    // If image is left => svg should appear on the card's right outside edge (left: calc(100% + 12px))
+    // If image is right => svg should appear on the card's left outside edge (right: calc(100% + 12px))
+    const svgIsOnRight = imageOrderClass === "md:order-1";
+    const svgOffsetInlineStyle: React.CSSProperties = svgIsOnRight
+      ? { left: "calc(100% + 12px)" }
+      : { right: "calc(100% + 12px)" };
+
+    // decorative wrapper common style
+    const decorativeSize = 120; // px, tweak this if you want smaller/larger
+    const svgWrapperStyle: React.CSSProperties = {
+      position: "absolute",
+      top: "50%",
+      transform: "translateY(-50%)",
+      width: decorativeSize,
+      height: decorativeSize,
+      zIndex: 0,
+      opacity: 0.13, // subtle presence
+      filter: "drop-shadow(0 10px 22px rgba(2,6,23,0.06))",
+      mixBlendMode: "multiply",
+      pointerEvents: "none",
+      ...svgOffsetInlineStyle,
+    };
+
+    return (
+      <div className={`flex ${index % 2 === 0 ? "justify-start" : "justify-end"} w-full`}>
+        <motion.article
+          ref={containerRef}
+          initial={reduceMotion ? "show" : "hidden"}
+          whileInView={reduceMotion ? "show" : "show"}
+          viewport={{ once: true, margin: "-120px" }}
+          variants={containerVariants}
+          className="w-11/12 md:w-4/5"
+          role="region"
+          aria-labelledby={`service-${s.id}`}
+        >
+          <motion.div variants={itemVariants} className="relative service-card-grid grid grid-cols-1 md:grid-cols-12 gap-6 items-center rounded-2xl bg-white shadow-sm overflow-visible">
+            {/* Decorative SVG (img) placed opposite the image, just outside the card edge.
+                Wrapped in a motion.div for parallax (y) movement; aria-hidden because decorative */}
+            <motion.div
+              aria-hidden
+              className="hidden md:block pointer-events-none"
+              style={{
+                ...svgWrapperStyle,
+                // y is a MotionValue; framer-motion will handle it when passed to style prop
+                // @ts-ignore - framer accepts MotionValue here
+                y: svgParallax,
+              }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              <img
+                src={svgPath}
+                alt=""
+                aria-hidden
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+                loading="lazy"
+                decoding="async"
+              />
+            </motion.div>
+
+            <motion.div className={`${imageColClass} ${imageOrderClass} overflow-hidden relative z-10`}>
+              <motion.div style={reduceMotion ? undefined : ({ y } as any)} className="w-full h-full">
+                <img
+                  src={s?.image || "/assets/service-placeholder.jpg"}
+                  alt={s?.title || "Service image"}
+                  className={`w-full object-cover ${index === 0 ? "h-[340px] md:h-[420px]" : "h-[260px] md:h-full"}`}
+                  loading="lazy"
+                  decoding="async"
+                  onError={(e) => {
+                    const img = e.currentTarget as HTMLImageElement;
+                    if (!img.dataset.fallback) {
+                      img.dataset.fallback = "1";
+                      img.src = "/assets/service-placeholder.jpg";
+                    }
+                  }}
+                />
+              </motion.div>
+            </motion.div>
+
+            <div className={`${contentColClass} p-6 md:p-8 ${contentOrderClass} relative z-10`}>
+              <motion.div variants={itemVariants} className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-lg bg-[#F6F7F9] flex items-center justify-center text-[#0b1220] shrink-0">
+                  {IconComp ? (
+                    // proper lucide icon when available
+                    <IconComp size={18} />
+                  ) : (
+                    // fallback: small version of the decorative svg inside the icon slot
+                    <img
+                      src={svgPath}
+                      alt=""
+                      aria-hidden
+                      style={{ width: 20, height: 20, objectFit: "contain", display: "block", opacity: 0.95 }}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <h4 id={`service-${s.id}`} className="text-xl font-semibold text-[#0b1220] tracking-tight">
+                    {s.title}
+                  </h4>
+                  <p className="text-sm text-gray-600 mt-2">{s.description}</p>
+
+                  {/* features bullets */}
+                  {Array.isArray(s.features) && s.features.length > 0 && (
+                    <ul className="mt-4 list-disc pl-5 text-sm text-gray-600 space-y-1">
+                      {s.features.map((f: string, idx: number) => (
+                        <li key={idx}>{f}</li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <div className="mt-5 flex flex-wrap gap-3 items-center">
+                    <Link
+                      to={`/services/${s.slug || s.id}`}
+                      className="inline-flex items-center gap-2 text-sm px-4 py-2 rounded-full border bg-white hover:shadow-sm transition"
+                    >
+                      View Projects <ArrowRight size={14} />
+                    </Link>
+                    <span className="text-xs text-gray-400">— concept to completion</span>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </motion.div>
+        </motion.article>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <SEOHead seo={pageSEO.home} />
+
+      {/* HERO */}
+      <header className="relative bg-white">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-12 pb-20 lg:pb-28 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div className="lg:col-span-6 z-10">
+            <div className="inline-flex items-center gap-3 mb-6 mt-6">
+              <div className="w-11 h-11 rounded-lg bg-[#F7F7F9] shadow-sm flex items-center justify-center text-[#0b1220] font-semibold">Y</div>
+              <span className="text-sm text-gray-500">Younick Design Studio</span>
+            </div>
+
+            <h1 className="text-4xl sm:text-5xl lg:text-5xl font-extrabold text-[#0b1220] leading-tight mb-6 tracking-tight" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+              Interiors that feel curated modern, warm and human.
+            </h1>
+
+            <p className="text-lg text-gray-600 max-w-xl mb-8">
+              We combine architecture, craft and human-centred spatial thinking to create spaces that work beautifully. From concept and 3D visualization to turnkey delivery we make spaces people want to live in.
+            </p>
+
+            <div className="flex flex-wrap gap-3 items-center">
+              <Link to="/contact" className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#0b1220] text-white font-medium shadow hover:scale-[1.01] transition">
+                Start a Project <ArrowRight size={16} />
+              </Link>
+
+              <Link to="/projects" className="inline-flex items-center gap-2 px-5 py-3 rounded-full border border-gray-200 text-[#0b1220] bg-white hover:shadow-sm transition">
+                View Portfolio
+              </Link>
+            </div>
+          </div>
+
+          <div className="lg:col-span-6 relative grid grid-cols-2 gap-4 z-0 mt-6">
+            <div
+              ref={heroReveal.ref}
+              className={`rounded-2xl overflow-hidden shadow-xl transform-gpu transition-all ${heroReveal.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
+              style={{ transitionDuration: reduceMotion ? "0ms" : "520ms" }}
+            >
+              <img
+                src={(featured && featured.length ? featured[heroIdx]?.image : "/assets/hero-768.jpg") || "/assets/hero-768.jpg"}
+                alt={(featured && featured.length ? featured[heroIdx]?.title : "project image") || "project image"}
+                className="w-full h-64 object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="rounded-2xl overflow-hidden shadow-lg">
+                <img src={decor[1] || "/default-project.jpg"} alt="" className="w-full h-28 object-cover" loading="lazy" decoding="async" />
+              </div>
+              <div className="rounded-2xl overflow-hidden shadow-lg">
+                <img src={decor[2] || "/default-project.jpg"} alt="" className="w-full h-28 object-cover" loading="lazy" decoding="async" />
+              </div>
+            </div>
+
+            <div className="rounded-2xl overflow-hidden shadow-lg col-span-2">
+              <img src={decor[0] || "/default-project.jpg"} alt="" className="w-full h-40 object-cover" loading="lazy" decoding="async" />
+            </div>
+          </div>
+        </div>
+
+        {/* Organic curved divider */}
+        <div className="w-full -mt-8">
+          <svg viewBox="0 0 1440 60" className="w-full block">
+            <path d="M0 40 C360 80, 1080 0, 1440 40 L1440 60 L0 60 Z" fill="#fff" />
+          </svg>
+        </div>
+      </header>
+
+      {/* main pushed down a bit to avoid navbar overlap */}
+      <main className="relative mt-8">
+        {/* STATS */}
+        <section className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
+          <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={containerVariants} className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <StatCard icon={Building} value="150+" label="Projects" />
+            <StatCard icon={Users} value="120+" label="Clients" />
+            <StatCard icon={Award} value="10+" label="Years" />
+            <StatCard icon={Star} value="98%" label="Satisfaction" />
+          </motion.div>
+        </section>
+
+        {/* ABOUT */}
+        <section className="py-16 bg-white">
+          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              <motion.div initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="lg:col-span-7">
+                <h2 className="text-3xl lg:text-4xl font-extrabold text-[#0b1220] mb-4" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+                  About Younick Design Studio
+                </h2>
+                <p className="text-lg text-gray-700 leading-relaxed mb-6 max-w-2xl">
+                  We design thoughtful interiors that balance material honesty with timeless form. Our approach begins with listening — understanding how a space must function in daily life — then layering craft, light and curated materials to create rooms that feel both lived-in and intentional.
+                </p>
+
+                <p className="text-sm text-gray-600 mb-6 max-w-2xl">
+                  From full-scale renovations to bespoke fit-outs, we manage concept, visualization and delivery with transparency and attention to detail. Clients choose us for clear communication, material expertise and the quiet confidence that comes from decades of built work.
+                </p>
+
+                <div className="flex gap-3">
+                  <Link to="/about" className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-[#0b1220] text-white font-medium">
+                    Learn More
+                    <ArrowRight size={14} />
+                  </Link>
+                  <Link to="/projects" className="inline-flex items-center gap-2 px-5 py-3 rounded-full border bg-white text-[#0b1220]">
+                    View Projects
+                  </Link>
+                </div>
+              </motion.div>
+
+              <motion.div initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="lg:col-span-5">
+                <div className="rounded-2xl overflow-hidden shadow-lg">
+                  <img src={featured[0]?.image || "/assets/about-hero.jpg"} alt="About Younick" className="w-full h-[420px] object-cover" loading="lazy" decoding="async" />
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        </section>
+
+        {/* FEATURED PROJECTS */}
+        <section className="bg-white py-12 border-t border-gray-100">
+          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-[#0b1220] tracking-tight">Featured Projects</h2>
+                <p className="text-sm text-gray-500 mt-1">A curated selection — material-forward and functional.</p>
+              </div>
+              <Link to="/projects" className="text-sm font-medium text-[#0b1220] inline-flex items-center gap-2">
+                View all <ArrowRight size={14} />
+              </Link>
+            </div>
+
+            <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={containerVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {featured.map((p) => (
+                <motion.div key={p.id} variants={itemVariants} className="project-card" role="button" tabIndex={0} onClick={() => openProject(p)} onKeyDown={(e) => onProjectKeyDown(e, p)} aria-label={`Open project ${p.title}`}>
+                  <ProjectCard project={p} onClick={() => openProject(p)} />
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+        </section>
+
+        {/* SERVICES */}
+        <section className="py-14 bg-gray-50">
+          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+            <div className="mb-10 lg:mb-12 lg:text-left text-center">
+              <h3 className="text-xl lg:text-2xl font-semibold text-[#0b1220] tracking-tight">Our Services</h3>
+              <p className="text-sm text-gray-500 mt-2 max-w-2xl mx-auto lg:mx-0">End-to-end design, visualization and execution — material-first, people-focused.</p>
+            </div>
+
+            <div className="space-y-12">
+              {(services || []).map((s: any, i: number) => (
+                <ServiceRow key={s.id || i} s={s} index={i} />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* TESTIMONIALS */}
+        <section className="py-16 bg-white">
+          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+            <TestimonialCarousel />
+          </div>
+        </section>
+
+        {/* LEADERSHIP */}
+        <section className="py-14 bg-white border-t border-gray-100">
+          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+            <div className="text-center mb-8">
+              <h3 className="text-2xl font-semibold">Leadership</h3>
+              <p className="text-sm text-gray-500 mt-2">Founders & core team shaping our design language.</p>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-6">
+              {teamMembers
+                .filter((m) => Boolean(m.isFounder) || /founder|ceo/i.test(String(m.role || "")))
+                .slice(0, 6)
+                .map((m) => (
+                  <div key={m.id || m.name} className="w-64 bg-white rounded-2xl shadow p-6 text-center">
+                    <div className="w-28 h-28 rounded-full overflow-hidden mx-auto bg-gray-100">
+                      <img src={(m as any).image || "/default-avatar.jpg"} alt={m.name} className="w-full h-full object-cover" />
+                    </div>
+                    <h4 className="mt-4 font-semibold text-[#0b1220]">{m.name}</h4>
+                    <div className="text-sm text-gray-500 mt-1">{m.role}</div>
+                  </div>
+                ))}
+            </div>
+
+            <div className="mt-8 text-center">
+              <Link to="/team" className="inline-flex items-center gap-2 px-5 py-3 rounded-full border bg-white text-[#0b1220] shadow-sm">
+                Meet the Team <ArrowRight size={14} />
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {selected && <ProjectModal project={selected} isOpen={modalOpen} onClose={() => setModalOpen(false)} />}
+
+      <style>{`
+        /* Project cards */
+        .project-card { border-radius: 12px; overflow: hidden; transition: transform .28s ease, box-shadow .28s ease; box-shadow: 0 10px 30px rgba(2,6,23,0.06); }
+        .project-card:hover { transform: translateY(-6px); box-shadow: 0 22px 50px rgba(2,6,23,0.12); }
+
+        /* Stats */
+        .stat-card { background: linear-gradient(180deg, #ffffff, #fbfbfb); border: 1px solid rgba(11,17,32,0.03); }
+
+        /* Service card grid */
+        .service-card-grid { border-radius: 14px; overflow: visible; border: 1px solid rgba(11,17,32,0.04); background: linear-gradient(180deg, #ffffff, #fbfbfb); }
+        .service-card-grid img { display:block; width:100%; height:100%; object-fit:cover; }
+
+        /* ensure decorative svg doesn't overflow on small screens */
+        @media (max-width: 768px) {
+          .service-card-grid { grid-template-columns: 1fr !important; }
+          .service-card-grid > [aria-hidden] { display:none !important; }
+        }
+
+        /* Ensure consistent card heights on md+ */
+        @media (min-width: 768px) {
+          .service-card-grid .md\\:col-span-5, .service-card-grid .md\\:col-span-6 { min-height: 260px; position:relative; }
+        }
+
+        /* Typography tightening */
+        h1, h2, h3, h4 { letter-spacing: -0.01em; }
+      `}</style>
+    </>
+  );
+};
+
+export default Home;
