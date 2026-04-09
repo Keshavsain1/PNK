@@ -11,7 +11,7 @@
   "author": "Keshav Sain",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": "18.x"
   },
   "scripts": {
     "start": "vite",
